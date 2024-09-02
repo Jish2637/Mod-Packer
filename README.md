@@ -39,6 +39,17 @@ The path to your mod pack folder will be shown in the app window, you should che
 
 ![image](https://github.com/user-attachments/assets/f225ce01-3955-4c2b-b801-4ba08732df34)
 
+**Note**
+
+Compression Methods:
+
+
+LZMA - Large Compression - Slow Speed - Install time for user also increased - As an example I reduced a 490MB modpack to 300MB using this method.
+
+Deflated - Medium Compression - Fast Speed - Very fast install for user
+
+Stored - None - Super Fast
+
 4.
 You can then click on create mod pack to start the process:
 
