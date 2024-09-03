@@ -81,7 +81,7 @@ They select folder:
 3.
 User will be shown a list of optionals if any.
 
-![image](https://github.com/user-attachments/assets/9dea9b49-4823-412c-a481-f192ae7bd3f7)
+![image](https://github.com/user-attachments/assets/422918e9-6961-4fed-be56-c2bfde4db1ac)
 
 4.
 Modpack installs and then shows a completed message:
