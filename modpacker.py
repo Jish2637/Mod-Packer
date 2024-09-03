@@ -1,11 +1,12 @@
 import os
+import sys
 import zipfile
 import shutil
 import tempfile
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QFileDialog, QLabel, QMessageBox, QProgressBar, QComboBox
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QFileDialog, QLabel, QMessageBox, QProgressBar, QComboBox, QListWidget, QListWidgetItem
 from PyQt5.QtCore import Qt
 
-def create_zip_from_folder(source_dir, output_filename, compression_method=zipfile.ZIP_LZMA, progress_callback=None):
+def create_zip_from_folder(source_dir, output_filename, compression_method, essential_folders, progress_callback=None):
     """Compress the source directory into a ZIP file with the specified compression method."""
     total_files = sum(len(files) for _, _, files in os.walk(source_dir))
     processed_files = 0
@@ -15,7 +16,11 @@ def create_zip_from_folder(source_dir, output_filename, compression_method=zipfi
             for file in files:
                 file_path = os.path.join(root, file)
                 arcname = os.path.relpath(file_path, start=source_dir)
-                zipf.write(file_path, arcname)
+                
+                # Add metadata to mark folders as essential or optional
+                is_essential = any(folder in arcname for folder in essential_folders)
+                zipf.write(file_path, arcname, compress_type=compression_method, compresslevel=9)
+                
                 processed_files += 1
 
                 # Update progress
@@ -23,80 +28,33 @@ def create_zip_from_folder(source_dir, output_filename, compression_method=zipfi
                     progress = int((processed_files / total_files) * 100)
                     progress_callback(progress)
 
-def create_extractor_script(zip_filename):
-    """Create a Python script that will extract the ZIP file to a user-defined location."""
-    
-    extractor_script = f"""import os
-import zipfile
-import sys
-from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox
-import shutil
-
-def extract_zip_flat_structure(zip_filename, extract_to):
-    \"\"\"Extract all files in the zip into the target directory, ignoring the top-level folder but preserving internal structure.\"\"\"
-    with zipfile.ZipFile(zip_filename, 'r') as zip_ref:
-        for member in zip_ref.namelist():
-            if member.endswith('/'):
-                continue  # Skip directories in the ZIP file listing
-
-            # Remove the top-level directory from the path
-            internal_path = os.path.join(*member.split('/')[1:])
-
-            # Full path to extract the file to
-            target_path = os.path.join(extract_to, internal_path)
-
-            # Create necessary directories
-            os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
-            # Extract the file
-            with zip_ref.open(member) as source, open(target_path, "wb") as target:
-                shutil.copyfileobj(source, target)
-
-def main():
-    app = QApplication([])
-
-    # Show initial instructional message to the user
-    QMessageBox.information(None, 'Instructions', 'Please select the installation folder of the game you are modding.')
-
-    # Ask the user for the installation directory
-    extract_to = QFileDialog.getExistingDirectory(None, 'Jish_Pack - Select Installation Directory', '')
-
-    if extract_to:
-        try:
-            # Determine the path of the ZIP file based on the execution context
-            if getattr(sys, 'frozen', False):
-                base_path = sys._MEIPASS
-                zip_filename = os.path.join(base_path, '{os.path.basename(zip_filename)}')
-            else:
-                zip_filename = '{os.path.basename(zip_filename)}'
-
-            # Call the extraction function
-            extract_zip_flat_structure(zip_filename, extract_to)
-            QMessageBox.information(None, 'Success', f'Mod pack installed successfully to: {{extract_to}}')
-        except Exception as e:
-            QMessageBox.critical(None, 'Error', f'Failed to install mod pack: {{str(e)}}')
-    else:
-        QMessageBox.warning(None, 'Warning', 'No installation directory selected.')
-
-if __name__ == "__main__":
-    main()
-"""
-
-    return extractor_script
-
-def create_mod_pack(mod_folder_path, output_filename, compression_method, progress_callback=None):
+def create_mod_pack(mod_folder_path, output_filename, compression_method, essential_folders, progress_callback=None):
     """Create a ZIP file and an extractor Python script, then package them into an EXE."""
-    
+
     # Define output filenames
     zip_filename = 'mod_pack.zip'
     extractor_script_filename = 'extractor.py'
 
     # Create a ZIP file from the mod folder with progress callback
-    create_zip_from_folder(mod_folder_path, zip_filename, compression_method, progress_callback)
+    create_zip_from_folder(mod_folder_path, zip_filename, compression_method, essential_folders, progress_callback)
 
-    # Create the extractor script
-    extractor_script_content = create_extractor_script(zip_filename)
-    
+    # Check if running as a PyInstaller bundle
+    if getattr(sys, 'frozen', False):
+        # Running in a PyInstaller bundle
+        base_path = sys._MEIPASS
+        extractor_template_path = os.path.join(base_path, 'extractor_template.py')
+    else:
+        # Running in a normal Python environment
+        extractor_template_path = 'extractor_template.py'
+
+    # Read the external extractor script template
+    with open(extractor_template_path, 'r') as file:
+        extractor_script_content = file.read()
+
+    # Replace placeholders in the script content
+    extractor_script_content = extractor_script_content.replace("{essential_folders}", str(essential_folders))
+
+    # Write the customized extractor script to a file
     with open(extractor_script_filename, 'w') as f:
         f.write(extractor_script_content)
 
@@ -131,7 +89,7 @@ def create_mod_pack(mod_folder_path, output_filename, compression_method, progre
 class ModPackGUI(QWidget):
     def __init__(self):
         super().__init__()
-
+        self.mod_folder_path = ""
         self.initUI()
 
     def initUI(self):
@@ -145,6 +103,12 @@ class ModPackGUI(QWidget):
         self.btn_select_mod_folder = QPushButton('Select Mod Folder', self)
         self.btn_select_mod_folder.clicked.connect(self.select_mod_folder)
         layout.addWidget(self.btn_select_mod_folder)
+
+        # List widget to select essential folders
+        self.essential_folders_list = QListWidget(self)
+        self.essential_folders_list.setSelectionMode(QListWidget.MultiSelection)
+        layout.addWidget(QLabel('Select Essential Folders:'))
+        layout.addWidget(self.essential_folders_list)
 
         # Dropdown for compression method
         self.compression_dropdown = QComboBox(self)
@@ -173,7 +137,7 @@ class ModPackGUI(QWidget):
         # Set main window properties
         self.setLayout(layout)
         self.setWindowTitle('Mod Pack Creator')
-        self.setGeometry(300, 300, 400, 200)  # Adjust height to fit the new button
+        self.setGeometry(300, 300, 400, 300)  # Adjust height to fit the new list widget
 
     def select_mod_folder(self):
         # Open file dialog to select mod folder
@@ -181,29 +145,42 @@ class ModPackGUI(QWidget):
         if folder:
             self.mod_folder_path = folder
             self.label.setText(f'Mod Folder Selected: {folder}')
+            self.populate_folders_list()
+
+    def populate_folders_list(self):
+        # Populate the list widget with folders in the selected mod folder
+        self.essential_folders_list.clear()
+        for folder_name in os.listdir(self.mod_folder_path):
+            folder_path = os.path.join(self.mod_folder_path, folder_name)
+            if os.path.isdir(folder_path):
+                item = QListWidgetItem(folder_name)
+                item.setCheckState(Qt.Unchecked)
+                self.essential_folders_list.addItem(item)
 
     def update_progress(self, value):
         self.progress_bar.setValue(value)
 
     def create_mod_pack(self):
         # Check if path is set
-        if hasattr(self, 'mod_folder_path'):
-            output_filename = os.path.basename(self.mod_folder_path)
-            
-            # Get the selected compression method
-            compression_method = self.compression_dropdown.currentData()
-
-            try:
-                self.progress_bar.setVisible(True)
-                self.progress_bar.setValue(0)
-                create_mod_pack(self.mod_folder_path, output_filename, compression_method, self.update_progress)
-                QMessageBox.information(self, 'Success', f'Mod pack EXE created successfully as {output_filename}!')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to create mod pack: {str(e)}')
-            finally:
-                self.progress_bar.setVisible(False)
-        else:
+        if not self.mod_folder_path:
             QMessageBox.warning(self, 'Warning', 'Please select a mod folder.')
+            return
+
+        # Determine which folders are essential
+        essential_folders = [item.text() for item in self.essential_folders_list.findItems('*', Qt.MatchWildcard) if item.checkState() == Qt.Checked]
+
+        output_filename = os.path.basename(self.mod_folder_path)
+        compression_method = self.compression_dropdown.currentData()
+
+        try:
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(0)
+            create_mod_pack(self.mod_folder_path, output_filename, compression_method, essential_folders, self.update_progress)
+            QMessageBox.information(self, 'Success', f'Mod pack EXE created successfully as {output_filename}!')
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to create mod pack: {str(e)}')
+        finally:
+            self.progress_bar.setVisible(False)
 
     def show_help(self):
         # Help message content
