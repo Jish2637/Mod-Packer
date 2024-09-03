@@ -3,6 +3,7 @@ Pack creator for modpacks/mod collections
 Allows you to easily create modpacks for any game and produces a single exe file for installation.
 
 Designed to be light and quick, no preview images for mods or anything like that. fast & simple setup & install for you and the end user.
+
 ---------------------------------------------------------------------------------------------------
 **Folder Structure**
 ---------------------------------------------------------------------------------------------------
